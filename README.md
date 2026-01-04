@@ -26,36 +26,62 @@
 ---
 
 ## 2) 개발 목적 (Goals)
-- UE5(C++) 멀티플레이 환경에서 **서버 권한(Server Authority)** 기반 동기화를 안정적으로 구성
-- 리슨 서버 Co-op 구조에서 발생하는 대표 이슈(지연, 판정 불일치, 복제 타이밍)를 재현/분해/해결
-- “플레이 루프(생존→미션→탈출)”가 명확히 동작하는 **출시 가능한 데모 품질** 확보
+- 최근 생존 장르는 **플레이어 간 경쟁/견제(PvP)** 중심으로 난이도를 만들다 보니, 정작 **AI(좀비)로부터의 위협이 상대적으로 약해** “환경은 배경이고 사람만 무섭다”는 흐름이 많다고 느꼈습니다.  
+  Project SZ는 이 방향과 다르게, **플레이어끼리 싸우는 게임이 아니라** “AI로부터 살아남는 것 자체가 핵심 난이도”가 되도록 설계합니다.
+
+- 목표는 단순히 같이 이동하는 Co-op이 아니라, **서로 역할을 나누고 협동해야만** 돌파 가능한 상황을 만드는 것입니다.  
+  예) 한 명이 소음/시야를 끌어 좀비 흐름을 분산시키고, 다른 한 명이 파밍/해제/미션 오브젝트를 진행하는 식의 **팀 단위 문제 해결**.
+
+
+## 3) 주요 구현 기능 (Key Features)
+
+### 멀티플레이/네트워크
+- **Listen Server 기반 Co-op 아키텍처**
+- **Replication / RPC(Server, Client, Multicast)** 기반 상태 동기화
+- **서버 확정 판정(Server Authority)**: 피격/데미지/상태 변화는 서버에서 확정 → 결과를 복제하여 클라에 반영
+- 네트워크 환경에서 발생하는 판정 불일치(지연/롤백 체감)를 줄이기 위한 디버깅 포인트(로그/시각화) 확보
 
 ---
 
-## 3) 주요 구현 기능 (Key Features)
-### 멀티플레이/네트워크
-- 리슨 서버 기반 Co-op 아키텍처
-- Replication / RPC(Server, Client, Multicast) 기반 상태 동기화
-- 서버 확정 판정(예: 피격/데미지/상태변화) 및 결과 복제
-
 ### 전투/생존
-- 근접/총기 전투
-- 총기 사용 시 **소음(Noise) → 좀비 어그로(Aggro)** 유발
-- 플레이어 상태: 체력(HP), 피격, 사망
-- 생존 자원: 허기/탈진(및 확장 가능한 스탯 시스템)
+- **근접 / 총기 전투**
+- **총기 소음이 핵심 리스크**: 발사 시 **Noise 발생 → 좀비 어그로(Aggro) 급상승**
+- **한 마리씩 “정리”하는 전투가 어려운 설계**
+  - 좀비 개체가 단단하거나 수가 많아 **교전이 길어질수록 불리**
+  - 소음이 누적/전파되면 주변 개체가 합류하여 **웨이브(Wave) 형태로 몰려오는 상황**이 자주 발생
+- 결과적으로 플레이어의 최적 행동은 “무쌍”이 아니라  
+  **발각되면 도주/이탈 → 동선 재정비 → 재진입** 같은 생존 전략 중심
+- 플레이어 상태: **HP / 피격 / 사망**
+- 생존 자원: **허기/탈진** 등(확장 가능한 스탯 시스템)
+
+---
 
 ### AI (좀비)
-- 기본 좀비 AI(탐지/추적/공격)
-- 소음 기반 추적 로직(Alpha~MVP 구간에서 고도화)
+- 기본 좀비 AI: **탐지 / 추적 / 공격**
+- **소음 민감도 중심의 추적 로직**
+  - 소음 발생 지점을 기준으로 **집결(Investigate/Converge)** 하며,
+  - 일정 임계 이상 소음이 발생하면 **주변 구역까지 확산**되어 증원 유입(웨이브화)
+- AI 난이도 설계 방향:  
+  **“잡아 치우는 적”이 아니라 “동선을 무너뜨리는 위협”**  
+  → 교전 유지보다 **은신/회피/분산**이 중요
+
+---
 
 ### 인벤토리/아이템
-- 인벤토리 및 아이템 파밍
-- 아이템 버프/디버프 효과
-- 총기 부착물(Attachment) 생성/장착
+- **인벤토리 및 파밍**
+- 아이템 **버프/디버프**(회복/상태 완화/일시 강화 등)
+- **총기 부착물(Attachment) 시스템**
+  - 부착물 생성/획득/장착
+  - 부착물에 따라 반동/정확도/조작성 등 전투 성향 변화
+  - (선택) 소음 관련 옵션: 소음 감소/발각 거리 감소 등은 밸런싱 고려 요소
+
+---
 
 ### 미션/탈출 루프
-- 미션 진행 → 조건 달성 → 탈출 플로우
-- UI/HUD(상태/미션/상호작용) 제공
+- **파밍 → 합류 → 미션 진행 → 조건 달성 → 탈출**
+- UI/HUD: 상태(HP/허기/탈진), 미션 목표, 상호작용/경고(소음/어그로 등) 제공
+- 협동 설계: 한 명이 **유도/교란(소음 관리)**, 다른 한 명이 **오브젝트 진행/파밍** 등 역할 분담이 자연스럽게 발생
+
 
 ---
 
@@ -88,7 +114,7 @@
 ## 6) 플레이/빌드 (Getting Started)
 > 추후 데모 배포 시 상세화 예정
 
-- Unreal Engine 버전: `UE 5.x`
+- Unreal Engine 버전: `UE 5.5.4`
 - 플랫폼: `Windows`
 - 실행/빌드:
   1) 프로젝트 클론 (Git LFS 포함)
@@ -111,4 +137,18 @@
 ---
 
 ## 9) 라이선스 (License)
-- TBD
+## 9) License / Usage Policy
+**All Rights Reserved.**
+
+This repository and its contents (source code, assets, and documentation) are provided for **viewing/evaluation purposes only**.
+
+### You may:
+- View the code for personal reference and portfolio review.
+
+### You may NOT:
+- Copy, reproduce, or redistribute any part of this repository (including substantial portions of code) in other projects.
+- Use the code or assets for commercial purposes or in public releases.
+- Extract, reuse, or reupload any game assets (models, textures, sounds, animations, UI, maps).
+- Create derivative works based on this repository without prior written permission.
+
+If you would like to use any part of this project, please contact the team for explicit permission.
